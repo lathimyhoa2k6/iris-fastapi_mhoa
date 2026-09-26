@@ -1,0 +1,15 @@
+services:
+  - type: web
+    name: iris-svm-fastapi
+    runtime: python
+    plan: free
+    buildCommand: pip install -r requirements.txt
+    startCommand: uvicorn app:app --host 0.0.0.0 --port $PORT
+    healthCheckPath: /health
+    envVars:
+      # One process runs the three modules (database API under /db, web at /).
+      - key: SERVICE_MODE
+        value: single
+      # Signing key for the login tokens, generated once by Render; never committed.
+      - key: JWT_SECRET
+        generateValue: true

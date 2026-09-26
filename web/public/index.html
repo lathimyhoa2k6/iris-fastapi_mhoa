@@ -1,0 +1,38 @@
+<!doctype html>
+<html lang="vi">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Iris Analytics — Phân tích dữ liệu hoa Iris</title>
+<meta name="description" content="Phân tích bộ dữ liệu Iris, phân loại bằng SVM và so sánh 5 mô hình hồi quy.">
+<link rel="icon" href="favicon.svg" type="image/svg+xml">
+<link rel="stylesheet" href="css/app.css">
+<!-- Addresses of the model API and the database API (served by the web module). -->
+<script src="config.js"></script>
+<script src="vendor/chart.umd.min.js"></script>
+<script type="module" src="js/app.js"></script>
+</head>
+<body>
+<div class="app">
+  <header class="topbar">
+    <div class="brand">
+      <div class="brand-icon" id="pageIcon"></div>
+      <div>
+        <h1 id="pageTitle">Phân tích dữ liệu hoa Iris</h1>
+        <p id="pageSub">Đang tải…</p>
+      </div>
+    </div>
+    <div class="top-actions">
+      <span class="pill" id="viewingPill"></span>
+      <div class="user-menu" id="userMenu"></div>
+    </div>
+  </header>
+
+  <div class="shell">
+    <nav class="sidebar" id="sidebar" aria-label="Điều hướng"></nav>
+    <main class="view" id="view" aria-live="polite"></main>
+  </div>
+</div>
+<div class="toast" id="toast" role="status"></div>
+</body>
+</html>

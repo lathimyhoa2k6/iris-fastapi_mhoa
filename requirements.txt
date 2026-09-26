@@ -1,0 +1,12 @@
+# Phụ thuộc lúc chạy API (Render cài đúng tệp này khi build).
+# Phiên bản scikit-learn PHẢI trùng với lúc huấn luyện, nếu không file .pkl sẽ cảnh báo hoặc lỗi.
+fastapi==0.141.1
+uvicorn[standard]==0.53.0
+pydantic==2.13.5
+scikit-learn==1.9.1
+numpy==2.5.3
+joblib==1.6.0
+# Mô-đun CSDL: băm mật khẩu, JWT, xuất Excel.
+bcrypt==5.0.0
+PyJWT==2.15.0
+openpyxl==3.1.5
