@@ -10,7 +10,11 @@ from pydantic import BaseModel, Field
 import security
 from db_api.db import get_conn, utc_now
 
-router = APIRouter(prefix="/model-runs", tags=["Kết quả đánh giá"])
+
+router = APIRouter(
+    prefix="/model-runs",
+    tags=["Kết quả đánh giá"],
+)
 
 
 class ModelRow(BaseModel):
@@ -36,51 +40,225 @@ class TrainingRunIn(BaseModel):
     test_size: int | None = None
     best_model: str
     total_seconds: float | None = None
-    models: list[ModelRow] = Field(..., min_length=1, max_length=10)
+    models: list[ModelRow] = Field(
+        ...,
+        min_length=1,
+        max_length=10,
+    )
+
+
+def row_to_dict(cursor, row) -> dict:
+    """Convert one pyodbc row to a dictionary."""
+    columns = [column[0] for column in cursor.description]
+    return dict(zip(columns, row))
 
 
 def run_with_models(conn, run_row) -> dict:
-    models = conn.execute("SELECT * FROM model_runs WHERE run_id = ? ORDER BY id", (run_row["id"],)).fetchall()
-    out = dict(run_row)
-    out["models"] = [{**dict(m), "best_params": json.loads(m["best_params_json"] or "{}")} for m in models]
-    return out
+    """Return one training run together with its model results."""
 
+    run_cursor = conn.cursor()
 
-def store_run(conn, user_id: int | None, body: TrainingRunIn) -> int:
-    """Insert one training_runs row and its model_runs rows; returns the run id."""
-    cur = conn.execute(
-        """INSERT INTO training_runs (user_id, created_at, trained_at, target, train_size, test_size,
-                                      best_model, total_seconds) VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
-        (user_id, utc_now(), body.trained_at, body.target, body.train_size, body.test_size,
-         body.best_model, body.total_seconds),
+    run_cursor.execute(
+        """
+        SELECT *
+        FROM model_runs
+        WHERE run_id = ?
+        ORDER BY id
+        """,
+        run_row[0],
     )
-    run_id = cur.lastrowid
-    for m in body.models:
-        conn.execute(
-            """INSERT INTO model_runs (run_id, model, label, r2, mae, mse, rmse, cv_r2_mean, cv_r2_std,
-                   train_seconds, predict_ms_per_sample, n_nonzero_coef, n_coefficients,
-                   best_params_json, is_best)
-               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
-            (run_id, m.model, m.label, m.r2, m.mae, m.mse, m.rmse, m.cv_r2_mean, m.cv_r2_std,
-             m.train_seconds, m.predict_ms_per_sample, m.n_nonzero_coef, m.n_coefficients,
-             json.dumps(m.best_params, ensure_ascii=False), int(m.model == body.best_model)),
+
+    model_rows = run_cursor.fetchall()
+
+    # Convert training_runs row
+    run_dict = row_to_dict(
+        run_cursor,
+        run_row,
+    )
+
+    models = []
+
+    for model_row in model_rows:
+        model_dict = row_to_dict(
+            run_cursor,
+            model_row,
         )
+
+        model_dict["best_params"] = json.loads(
+            model_dict.get("best_params_json") or "{}"
+        )
+
+        models.append(model_dict)
+
+    run_dict["models"] = models
+
+    return run_dict
+
+
+def store_run(
+    conn,
+    user_id: int | None,
+    body: TrainingRunIn,
+) -> int:
+    """Insert one training run and its model rows."""
+
+    cursor = conn.cursor()
+
+    cursor.execute(
+        """
+        INSERT INTO training_runs (
+            user_id,
+            created_at,
+            trained_at,
+            target,
+            train_size,
+            test_size,
+            best_model,
+            total_seconds
+        )
+        OUTPUT INSERTED.id
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+        """,
+        user_id,
+        utc_now(),
+        body.trained_at,
+        body.target,
+        body.train_size,
+        body.test_size,
+        body.best_model,
+        body.total_seconds,
+    )
+
+    row = cursor.fetchone()
+
+    if row is None:
+        raise RuntimeError(
+            "Không lấy được ID của training run"
+        )
+
+    run_id = int(row[0])
+
+    for model in body.models:
+        cursor.execute(
+            """
+            INSERT INTO model_runs (
+                run_id,
+                model,
+                label,
+                r2,
+                mae,
+                mse,
+                rmse,
+                cv_r2_mean,
+                cv_r2_std,
+                train_seconds,
+                predict_ms_per_sample,
+                n_nonzero_coef,
+                n_coefficients,
+                best_params_json,
+                is_best
+            )
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            run_id,
+            model.model,
+            model.label,
+            model.r2,
+            model.mae,
+            model.mse,
+            model.rmse,
+            model.cv_r2_mean,
+            model.cv_r2_std,
+            model.train_seconds,
+            model.predict_ms_per_sample,
+            model.n_nonzero_coef,
+            model.n_coefficients,
+            json.dumps(
+                model.best_params,
+                ensure_ascii=False,
+            ),
+            int(model.model == body.best_model),
+        )
+
     conn.commit()
+
     return run_id
 
 
-@router.post("", status_code=status.HTTP_201_CREATED)
-def create_model_run(body: TrainingRunIn, user: dict = Depends(security.current_user), conn=Depends(get_conn)):
-    """Store the evaluation table of the five models from one training run."""
-    run_id = store_run(conn, user["id"], body)
-    run = conn.execute("SELECT * FROM training_runs WHERE id = ?", (run_id,)).fetchone()
-    return run_with_models(conn, run)
+@router.post(
+    "",
+    status_code=status.HTTP_201_CREATED,
+)
+def create_model_run(
+    body: TrainingRunIn,
+    user: dict = Depends(security.current_user),
+    conn=Depends(get_conn),
+):
+    """Store the evaluation table of one training run."""
+
+    run_id = store_run(
+        conn,
+        user["id"],
+        body,
+    )
+
+    cursor = conn.cursor()
+
+    cursor.execute(
+        """
+        SELECT *
+        FROM training_runs
+        WHERE id = ?
+        """,
+        run_id,
+    )
+
+    run = cursor.fetchone()
+
+    if run is None:
+        raise RuntimeError(
+            "Không tìm thấy training run vừa tạo"
+        )
+
+    return run_with_models(
+        conn,
+        run,
+    )
 
 
 @router.get("")
-def list_model_runs(limit: int = Query(20, ge=1, le=100), conn=Depends(get_conn)):
-    """Recent training runs, newest first, each with its five model rows."""
-    rows = conn.execute(
-        """SELECT r.*, u.username FROM training_runs r LEFT JOIN users u ON u.id = r.user_id
-           ORDER BY r.id DESC LIMIT ?""", (limit,)).fetchall()
-    return {"runs": [run_with_models(conn, r) for r in rows]}
+def list_model_runs(
+    limit: int = Query(
+        20,
+        ge=1,
+        le=100,
+    ),
+    conn=Depends(get_conn),
+):
+    """Recent training runs, newest first."""
+
+    cursor = conn.cursor()
+
+    cursor.execute(
+        """
+        SELECT
+            r.*,
+            u.username
+        FROM training_runs r
+        LEFT JOIN users u
+            ON u.id = r.user_id
+        ORDER BY r.id DESC
+        OFFSET 0 ROWS
+        FETCH NEXT ? ROWS ONLY
+        """,
+        limit,
+    )
+
+    rows = cursor.fetchall()
+
+    return {
+        "runs": [
+            run_with_models(conn, row)
+            for row in rows
+        ]
+    }

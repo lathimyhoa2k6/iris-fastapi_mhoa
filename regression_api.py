@@ -62,14 +62,14 @@ def _public_report(report: dict) -> dict:
     return {k: v for k, v in report.items() if k not in ("regularization_paths", "diagnostics")}
 
 
-@router.get("/regression/metrics", tags=["Hồi quy"])
+@router.get("/regression/metrics", tags=["Mô hình tuyến tính"])
 def regression_metrics():
     """Comparison table of the five models from the latest training run."""
     _, report = _require_models()
     return _public_report(report)
 
 
-@router.post("/regression/train", tags=["Hồi quy"])
+@router.post("/regression/train", tags=["Mô hình tuyến tính"])
 def regression_train(user: dict = Depends(security.current_user)):
     """Retrain the five models (GridSearchCV + KFold 5), save them and return the new table.
 
@@ -89,7 +89,7 @@ def regression_train(user: dict = Depends(security.current_user)):
         _train_lock.release()
 
 
-@router.post("/regression/predict", tags=["Hồi quy"])
+@router.post("/regression/predict", tags=["Mô hình tuyến tính"])
 def regression_predict(data: SinglePredictInput):
     """Predict petal_width with one model; runtime measured with time.perf_counter."""
     models, _ = _require_models()
@@ -105,7 +105,7 @@ def regression_predict(data: SinglePredictInput):
     }
 
 
-@router.post("/regression/arena", tags=["Hồi quy"])
+@router.post("/regression/arena", tags=["Mô hình tuyến tính"])
 def regression_arena(data: RegressionInput):
     """Model arena: all five models on the same input, with consensus and deviations."""
     models, _ = _require_models()
@@ -115,14 +115,14 @@ def regression_arena(data: RegressionInput):
     return result
 
 
-@router.get("/regression/regularization-path", tags=["Hồi quy"])
+@router.get("/regression/regularization-path", tags=["Mô hình tuyến tính"])
 def regression_path(model: RegularizedKey = Query("lasso")):
     """Coefficients (standardised inputs) as alpha grows on a log scale."""
     _, report = _require_models()
     return report["regularization_paths"][model]
 
 
-@router.get("/regression/diagnostics", tags=["Hồi quy"])
+@router.get("/regression/diagnostics", tags=["Mô hình tuyến tính"])
 def regression_diagnostics(model: ModelKey = Query("ridge")):
     """Actual vs predicted and residuals on the test set for one model."""
     _, report = _require_models()
